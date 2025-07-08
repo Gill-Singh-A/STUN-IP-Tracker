@@ -66,6 +66,8 @@ def capture_packet_callback(packet):
     elif info[3]:
         stun_ips.add(info[0])
         display('*', f"Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
+        if locate:
+            locations.extend(get_ip_location([info[0]], verbose=True))
     elif arguments.verbose:
         stun_ips.add(info[0])
         display('*', f"{Back.MAGENTA}[VERBOSE: ASN in Ignore List]{Back.RESET} Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
