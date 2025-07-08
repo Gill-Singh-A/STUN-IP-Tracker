@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+from sys import path
 from os import geteuid
 from datetime import date
 from ipwhois import IPWhois
@@ -9,6 +10,12 @@ from optparse import OptionParser
 from scapy.all import get_if_list
 from colorama import Fore, Back, Style
 from time import strftime, localtime
+
+path.append("IP-Location/IP Geolocation")
+
+from ipgeolocation import *
+
+path.append("../../")
 
 status_color = {
     '+': Fore.GREEN,
@@ -28,6 +35,8 @@ def get_arguments(*args):
     return parser.parse_args()[0]
 
 stun_ips = set()
+locate = True
+locations = []
 with open("ignore_asn_names.txt", 'r') as file:
     ignore_asns = [asn_name for asn_name in file.read().split('\n') if asn_name != '']
 
@@ -66,9 +75,11 @@ def capture_packet_callback(packet):
 if __name__ == "__main__":
     arguments = get_arguments(('-i', "--iface", "iface", f"Network Interface on which sniffing has to be done ({','.join(get_if_list())})"),
                               ('-v', "--verbose", "verbose", "Display Additional Information related to the STUN Packets on the screen"),
+                              ('-l', "--locate", "locate", f"Locate Filtered IP Addresses (True/False, Default=True)"),
                               ('-w', "--write", "write", "Dump the captured STUN Packets to File"),
                               ('-r', "--read", "read", "Read Packets from a Packet Capture File"))
     arguments.verbose = True if arguments.verbose and arguments.verbose.lower() == "true" else False
+    locate = False if arguments.locate and arguments.locate.lower() == "false" else True
     if arguments.read:
         try:
             packets = FileCapture(arguments.read)
@@ -85,11 +96,15 @@ if __name__ == "__main__":
             elif info[3]:
                 stun_ips.add(info[0])
                 display('*', f"Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
+                if locate:
+                    locations.extend(get_ip_location([info[0]], verbose=True))
             elif arguments.verbose:
                 stun_ips.add(info[0])
                 display('*', f"{Back.MAGENTA}[VERBOSE: ASN in Ignore List]{Back.RESET} Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
             else:
                 stun_ips.add(info[0])
+        if locate:
+            locate_ip_on_map(locations)
     elif not arguments.iface or arguments.iface not in get_if_list():
         display('-', f"Please specify a valid {Back.YELLOW}Network Interface{Back.RESET} for Sniffing")
         exit(0)
