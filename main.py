@@ -4,7 +4,7 @@ from os import geteuid
 from datetime import date
 from ipwhois import IPWhois
 from ipwhois.exceptions import IPDefinedError
-from pyshark import FileCapture
+from pyshark import FileCapture, LiveCapture
 from optparse import OptionParser
 from scapy.all import get_if_list
 from colorama import Fore, Back, Style
@@ -36,7 +36,6 @@ def check_root():
 
 def get_asn_name(ip):
     return IPWhois(ip).lookup_whois().get("asn_description")
-    
 def process_packet(packet):
     if "stun" in packet:
         if packet["ip"].src not in stun_ips:
@@ -51,6 +50,18 @@ def process_packet(packet):
                 return packet["ip"].dst, packet["ip"].src, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
             except IPDefinedError as error:
                 pass
+def capture_packet_callback(packet):
+    info = process_packet(packet)
+    if info == None:
+        return
+    elif info[3]:
+        stun_ips.add(info[0])
+        display('*', f"Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
+    elif arguments.verbose:
+        stun_ips.add(info[0])
+        display('*', f"{Back.MAGENTA}[VERBOSE: ASN in Ignore List]{Back.RESET} Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
+    else:
+        stun_ips.add(info[0])
 
 if __name__ == "__main__":
     arguments = get_arguments(('-i', "--iface", "iface", f"Network Interface on which sniffing has to be done ({','.join(get_if_list())})"),
@@ -83,6 +94,12 @@ if __name__ == "__main__":
         display('-', f"Please specify a valid {Back.YELLOW}Network Interface{Back.RESET} for Sniffing")
         exit(0)
     elif check_root():
-        pass
+        try:
+            display(':', f"Starting Sniffing on {Back.MAGENTA}{arguments.iface}{Back.RESET} Interface...")
+            capture = LiveCapture(interface=arguments.iface)
+            capture.apply_on_packets(capture_packet_callback)
+            capture.sniff()
+        except KeyboardInterrupt:
+            display(':', f"Stopped Sniffing on {Back.MAGENTA}{arguments.iface}{Back.RESET} Interface")
     else:
         display('-', f"Please run this Program as {Back.YELLOW}root{Back.RESET} to Capture Live Packets from interface {Back.MAGENTA}{arguments.iface}{Back.RESET}")
