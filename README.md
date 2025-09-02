@@ -26,6 +26,11 @@ pip install -r requirements.txt
 ```bash
 sudo ./stun_monitor.py --iface <network-interface> --verbose true --locate true
 ```
+It also supports reading of packet capture files for analysis<br />
+```bash
+./main.py --read <packet_capture_file>
+```
+![WhatsApp Call Send](assets/images/whatsapp_call_send_packets_read.png)
 ## Background
 ### 1. Peer-to-Peer Connections
 * In **1:1 WhatsApp calls**, traffic is exchanged **directly between devices** when possible.
@@ -51,18 +56,18 @@ Although WhatsApp is used here as an example, **any VoIP/WebRTC-based service th
 ## Diagram
 ### How WhatsApp Uses STUN + P2P
 ```
-   Alice's Phone (Private IP)       Bob's Phone (Private IP)
-           192.168.1.5                      10.0.0.8
-                 |                                 |
-        [ NAT Router: Alice ]             [ NAT Router: Bob ]
-                 |                                 |
+   Alice's Phone (Private IP)             Bob's Phone (Private IP)
+           192.168.1.5                            10.0.0.8
+                 |                                       |
+        [ NAT Router: Alice ]                   [ NAT Router: Bob ]
+                 |                                       |
                  |------->  WhatsApp STUN Server  <------|
                                (Public Internet)
-                 |                                 |
+                 |                                       |
     Discovers Alice’s Public IP: 203.x.x.x    Discovers Bob’s Public IP: 82.x.x.x
-                 |                                 |
-                 |<----- Direct P2P Connection ---->|
-                        (Audio/Video Packets)
+                 |                                       |
+                 |<-------  Direct P2P Connection ------>|
+                             (Audio/Video Packets)
 ```
 ## Mitigation
 WhatsApp provides a setting to prevent IP address exposure in calls:
