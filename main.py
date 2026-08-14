@@ -47,16 +47,16 @@ def get_asn_name(ip):
     return IPWhois(ip).lookup_whois().get("asn_description")
 def process_packet(packet):
     if "stun" in packet:
-        if packet["ip"].src not in stun_ips:
+        if (("ip" in packet and packet["ip"].src) or ("IPv6" in packet and packet["IPv6"].src)) not in stun_ips:
             try:
-                asn_name = get_asn_name(packet["ip"].src)
-                return packet["ip"].src, packet["ip"].dst, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
+                asn_name = get_asn_name(packet["ip"].src if "ip" in packet else packet["IPv6"].src)
+                return packet["ip"].src if "ip" in packet else packet["IPv6"].src, packet["ip"].dst if "ip" in packet else packet["IPv6"].dst, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
             except IPDefinedError as error:
                 pass
-        if packet["ip"].dst not in stun_ips:
+        if (("ip" in packet and packet["ip"].dst) or ("IPv6" in packet and packet["IPv6"].dst)) not in stun_ips:
             try:
-                asn_name = get_asn_name(packet["ip"].dst)
-                return packet["ip"].dst, packet["ip"].src, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
+                asn_name = get_asn_name(packet["ip"].dst if "ip" in packet else packet["IPv6"].dst)
+                return packet["ip"].dst if "ip" in packet else packet["IPv6"].dst, packet["ip"].src if "ip" in packet else packet["IPv6"].src, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
             except IPDefinedError as error:
                 pass
 def capture_packet_callback(packet):
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         except Exception as error:
             display('-', f"Error occured while reading Packets from File {Back.MAGENTA}{arguments.read}{Back.RESET} => {Back.YELLOW}{error}{Back.RESET}")
             exit(0)
-        for packet in packets:
+        for index, packet in enumerate(packets):
             info = process_packet(packet)
             if info == None:
                 continue
