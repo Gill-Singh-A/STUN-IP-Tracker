@@ -2,16 +2,19 @@
 
 from sys import path
 from os import geteuid
+from os.path import dirname, abspath, join
 from datetime import date
 from ipwhois import IPWhois
-from ipwhois.exceptions import IPDefinedError
+from ipwhois.exceptions import IPDefinedError, BaseIpwhoisException
 from pyshark import FileCapture, LiveCapture
 from optparse import OptionParser
 from scapy.all import get_if_list
 from colorama import Fore, Back, Style
 from time import strftime, localtime
 
-path.append("IP-Location/IP Geolocation")
+BASE_DIR = dirname(abspath(__file__))
+
+path.append(join(BASE_DIR, "IP-Location", "IP Geolocation"))
 
 from ipgeolocation import *
 
@@ -37,27 +40,27 @@ def get_arguments(*args):
 stun_ips = set()
 locate = True
 locations = []
-with open("ignore_asn_names.txt", 'r') as file:
+with open(join(BASE_DIR, "ignore_asn_names.txt"), 'r') as file:
     ignore_asns = [asn_name for asn_name in file.read().split('\n') if asn_name != '']
 
 def check_root():
     return geteuid() == 0
 
 def get_asn_name(ip):
-    return IPWhois(ip).lookup_whois().get("asn_description")
+    return IPWhois(ip).lookup_whois().get("asn_description") or ""
 def process_packet(packet):
     if "stun" in packet:
         if (("ip" in packet and packet["ip"].src) or ("IPv6" in packet and packet["IPv6"].src)) not in stun_ips:
             try:
                 asn_name = get_asn_name(packet["ip"].src if "ip" in packet else packet["IPv6"].src)
                 return packet["ip"].src if "ip" in packet else packet["IPv6"].src, packet["ip"].dst if "ip" in packet else packet["IPv6"].dst, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
-            except IPDefinedError as error:
+            except (IPDefinedError, BaseIpwhoisException) as error:
                 pass
         if (("ip" in packet and packet["ip"].dst) or ("IPv6" in packet and packet["IPv6"].dst)) not in stun_ips:
             try:
                 asn_name = get_asn_name(packet["ip"].dst if "ip" in packet else packet["IPv6"].dst)
                 return packet["ip"].dst if "ip" in packet else packet["IPv6"].dst, packet["ip"].src if "ip" in packet else packet["IPv6"].src, asn_name, (True if len([asn for asn in ignore_asns if asn in asn_name]) == 0 else False)
-            except IPDefinedError as error:
+            except (IPDefinedError, BaseIpwhoisException) as error:
                 pass
 def capture_packet_callback(packet):
     info = process_packet(packet)
@@ -78,7 +81,6 @@ if __name__ == "__main__":
     arguments = get_arguments(('-i', "--iface", "iface", f"Network Interface on which sniffing has to be done ({','.join(get_if_list())})"),
                               ('-v', "--verbose", "verbose", "Display Additional Information related to the STUN Packets on the screen"),
                               ('-l', "--locate", "locate", f"Locate Filtered IP Addresses (True/False, Default=True)"),
-                              ('-w', "--write", "write", "Dump the captured STUN Packets to File"),
                               ('-r', "--read", "read", "Read Packets from a Packet Capture File"))
     arguments.verbose = True if arguments.verbose and arguments.verbose.lower() == "true" else False
     locate = False if arguments.locate and arguments.locate.lower() == "false" else True
@@ -87,36 +89,25 @@ if __name__ == "__main__":
             packets = FileCapture(arguments.read)
         except FileNotFoundError:
             display('-', f"File {Back.YELLOW}{arguments.read}{Back.RESET} not found!")
-            exit(0)
+            exit(1)
         except Exception as error:
             display('-', f"Error occured while reading Packets from File {Back.MAGENTA}{arguments.read}{Back.RESET} => {Back.YELLOW}{error}{Back.RESET}")
-            exit(0)
-        for index, packet in enumerate(packets):
-            info = process_packet(packet)
-            if info == None:
-                continue
-            elif info[3]:
-                stun_ips.add(info[0])
-                display('*', f"Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
-                if locate:
-                    locations.extend(get_ip_location([info[0]], verbose=True))
-            elif arguments.verbose:
-                stun_ips.add(info[0])
-                display('*', f"{Back.MAGENTA}[VERBOSE: ASN in Ignore List]{Back.RESET} Detected STUN Packets from {Back.WHITE}{info[1]}{Back.RESET} => {Back.BLUE}{info[0]} ({info[2]}){Back.RESET}")
-            else:
-                stun_ips.add(info[0])
+            exit(1)
+        for packet in packets:
+            capture_packet_callback(packet)
         if locate:
             locate_ip_on_map(locations)
     elif not arguments.iface or arguments.iface not in get_if_list():
         display('-', f"Please specify a valid {Back.YELLOW}Network Interface{Back.RESET} for Sniffing")
-        exit(0)
+        exit(1)
     elif check_root():
         try:
             display(':', f"Starting Sniffing on {Back.MAGENTA}{arguments.iface}{Back.RESET} Interface...")
             capture = LiveCapture(interface=arguments.iface)
             capture.apply_on_packets(capture_packet_callback)
-            capture.sniff()
         except KeyboardInterrupt:
             display(':', f"Stopped Sniffing on {Back.MAGENTA}{arguments.iface}{Back.RESET} Interface")
+            if locate and locations:
+                locate_ip_on_map(locations)
     else:
         display('-', f"Please run this Program as {Back.YELLOW}root{Back.RESET} to Capture Live Packets from interface {Back.MAGENTA}{arguments.iface}{Back.RESET}")
